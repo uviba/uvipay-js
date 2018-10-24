@@ -52,7 +52,8 @@ u.refund = function(charge_id, amount) {
                 amount         : amount,
                 charge_id      : charge_id,
                 api_version    : u.ver,
-                api_subversion : u.subver
+                api_subversion : u.subver,
+                lib_lang:'node.js',
             }).then(function (response) {
                 if (response.data.error) {
                     reject((response.data.error_data || []).message || 'Sorry some errors happened.');
@@ -97,7 +98,8 @@ u.charge = function(token, amount, subscription) {
                 uviba_params   : '',
                 subscription   : subscription,
                 api_version    : u.ver,
-                api_subversion : u.subver
+                api_subversion : u.subver,
+                lib_lang:'node.js',
             }).then(function(response) {
                 if (response.data.error) {
                     reject((response.data.error_data || []).message || 'Sorry some errors happened.');
@@ -128,7 +130,8 @@ u.create_paylink = function(amount) {
                 isLive         : u.live,
                 amount         : amount,
                 api_version    : u.ver,
-                api_subversion : u.subver
+                api_subversion : u.subver,
+                lib_lang:'node.js',
             }).then(function(response) {
                 if (response.data.error) {
                     reject((response.data.error_data || []).message || 'Sorry some errors happened.');
@@ -167,7 +170,8 @@ u.send_payment = function(amount, params) {
                     destination_address : params.email || '',
                     message_to_receiver : params.message || '',
                     api_version         : u.ver,
-                    api_subversion      : u.subver
+                    api_subversion      : u.subver,
+                    lib_lang:'node.js',
                 }).then(function(response) {
                     if (response.data.error && response.data.error_data) {
                         reject(response.data.error_data.message || 'Sorry some errors happened.');
