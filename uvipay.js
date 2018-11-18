@@ -11,14 +11,19 @@ axios.interceptors.request.use((request) => {
 var u = { sk: '', live: false, ver: 'v2', subver: '1' };
 
 /**
+ * @name setApiPrivateKey
  * @description Set private api key to uvipay client
  * @param {String} key Private api key
  */
-u.setApiPrivateKey = function(key) {
+u.setApiPrivateKey = u.setApiKey = function(key) {
     u.sk = key.trim();
     u.live = key.indexOf('sk_live_') == 0;
 };
-u.setApiKey = u.setApiPrivateKey;
+
+/**
+ * @name checkErrors
+ * @description Checks code error
+ */
 u.checkErrors = function(reject) {
     if ((u.sk || '').trim().length < 3) {
         if (typeof reject == 'function') {
@@ -32,6 +37,7 @@ u.checkErrors = function(reject) {
 };
 
 /**
+ * @name refund
  * @description Refund paid payment
  * @param {Object} info Payment info that returned in uvipay.charge
  * @returns {Promise}
@@ -52,8 +58,7 @@ u.refund = function(charge_id, amount) {
                 amount         : amount,
                 charge_id      : charge_id,
                 api_version    : u.ver,
-                api_subversion : u.subver,
-                lib_lang:'node.js',
+                api_subversion : u.subver
             }).then(function (response) {
                 if (response.data.error) {
                     reject((response.data.error_data || []).message || 'Sorry some errors happened.');
@@ -70,19 +75,22 @@ u.refund = function(charge_id, amount) {
 };
 
 /**
+ * @name charge
  * @description Charge the user
  * @param {String} token Payment token returned by frontend
  * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
+ * @param {Object} params Additional parameters
  * @returns {Promise}
  */
-u.charge = function(token, amount, subscription) {
+u.charge = function(token, amount, params) {
+
     if (typeof token == "object") {
         amount = token.amount || amount || 0;
-        subscription = token.subscription || false;
+        params = token.params || {};
         token = token.token;
     }
     if (typeof amount == "object") {
-        subscription = amount.subscription || false;
+        params = amount.params || {};
         amount = amount.amount;
     }
 
@@ -90,7 +98,7 @@ u.charge = function(token, amount, subscription) {
         if (!u.checkErrors(reject)) return;
 
         if ((token || '').length > 3 && amount > 1) {
-            axios.post('https://api.uviba.com/pay/charge', {
+            axios.post('https://api.uviba.com/pay/charge', Object.assign(params, {
                 sign           : sha256(token + '::' + u.sk),
                 amount         : amount,
                 UvibaToken     : token,
@@ -98,9 +106,8 @@ u.charge = function(token, amount, subscription) {
                 uviba_params   : '',
                 subscription   : subscription,
                 api_version    : u.ver,
-                api_subversion : u.subver,
-                lib_lang:'node.js',
-            }).then(function(response) {
+                api_subversion : u.subver
+            })).then(function(response) {
                 if (response.data.error) {
                     reject((response.data.error_data || []).message || 'Sorry some errors happened.');
                 } else {
@@ -116,6 +123,7 @@ u.charge = function(token, amount, subscription) {
 };
 
 /**
+ * @name create_paylink
  * @description Create link that user withdraw his money using this link
  * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
  * @returns {Promise}
@@ -130,9 +138,85 @@ u.create_paylink = function(amount) {
                 isLive         : u.live,
                 amount         : amount,
                 api_version    : u.ver,
-                api_subversion : u.subver,
-                lib_lang:'node.js',
+                api_subversion : u.subver
             }).then(function(response) {
+                if (response.data.error) {
+                    reject((response.data.error_data || []).message || 'Sorry some errors happened.');
+                } else {
+                    response.data.success_data.link = response.data.success_data.paylink;
+                    resolve(response.data.success_data);
+                }
+            }).catch(function() {
+                reject('Sorry some errors happened.');
+            });
+        } else {
+            reject('Amount to send is not defined in code. Please define it in function.');
+        }
+    });
+};
+
+/**
+ * @name send_payment
+ * @description Send payment to the user
+ * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
+ * @param {Object} params Parameters
+ * @returns {Promise}
+ */
+u.send_payment = u.send_payments = function(amount, params) {
+    return new Promise(function(resolve, reject) {
+        params.destination = params.destination || 'email';
+        params.takeback = params.takeback || params.take_back || 0;
+        if (params.destination == 'email' && !params.email) {
+            reject('Please define recipient\'s email address.');
+        } else {
+            u.create_paylink(amount).then(function(result) {
+                axios.post('https://api.uviba.com/pay/send_payments', Object.assign(params, {
+                    private_key         : u.sk,
+                    isLive              : u.live,
+                    paylink_code        : result.link_code,
+                    link_methods        : true,
+                    destination         : params.destination,
+                    destination_address : params.email || '',
+                    message_to_receiver : params.message || '',
+                    api_version         : u.ver,
+                    api_subversion      : u.subver,
+                    takeback            : params.takeback,
+                })).then(function(response) {
+                    if (response.data.error && response.data.error_data) {
+                        reject(response.data.error_data.message || 'Sorry some errors happened.');
+                    } else {
+                        if (response.data.send_id) {
+                            resolve({
+                                id: response.data.send_id,
+                                amount: amount
+                            });                            
+                        } else reject('Sorry some errors happened.');
+                    }
+                }).catch(function() {
+                    reject('Sorry some errors happened.');
+                });
+            }).catch(reject);
+        }
+    });
+};
+
+/**
+ * @name take_payment_back
+ * @description Take payment back
+ * @param {Object} params Parameters
+ * @returns {Promise}
+ */
+u.take_payment_back = function(params) {
+    return new Promise(function(resolve, reject) {
+        if (!u.checkErrors(reject)) return;
+
+        if (amount > 0) {
+            axios.post('https://api.uviba.com/pay/takeback', Object.assign(params, {
+                private_key    : u.sk,
+                isLive         : u.live,
+                api_version    : u.ver,
+                api_subversion : u.subver
+            })).then(function(response) {
                 if (response.data.error) {
                     reject((response.data.error_data || []).message || 'Sorry some errors happened.');
                 } else {
@@ -147,44 +231,5 @@ u.create_paylink = function(amount) {
         }
     });
 };
-
-/**
- * @description Send payment to the user
- * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
- * @param {Object} params Parameters
- * @returns {Promise}
- */
-u.send_payment = function(amount, params) {
-    return new Promise(function(resolve, reject) {
-        params.destination = params.destination || 'email';
-        if (params.destination == 'email' && !params.email) {
-            reject('Please define recipient\'s email address.');
-        } else {
-            u.create_paylink(amount).then(function(result) {
-                axios.post('https://api.uviba.com/pay/send_payments', {
-                    private_key         : u.sk,
-                    isLive              : u.live,
-                    paylink_code        : result.link_code,
-                    link_methods        : true,
-                    destination         : params.destination,
-                    destination_address : params.email || '',
-                    message_to_receiver : params.message || '',
-                    api_version         : u.ver,
-                    api_subversion      : u.subver,
-                    lib_lang:'node.js',
-                }).then(function(response) {
-                    if (response.data.error && response.data.error_data) {
-                        reject(response.data.error_data.message || 'Sorry some errors happened.');
-                    } else {
-                        (response.data.success ? resolve : reject)();
-                    }
-                }).catch(function() {
-                    reject('Sorry some errors happened.');
-                });
-            }).catch(reject);
-        }
-    });
-};
-u.send_payments = u.send_payment;
 
 module.exports = u;
