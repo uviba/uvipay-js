@@ -83,11 +83,12 @@ u.refund = function(charge_id, amount) {
  * @returns {Promise}
  */
 u.charge = function(token, amount, params) {
-
+var subscription=false;
     if (typeof token == "object") {
         amount = token.amount || amount || 0;
         params = token.params || {};
         token = token.token;
+        subscription = token.subscription || false;
     }
     if (typeof amount == "object") {
         params = amount.params || {};
