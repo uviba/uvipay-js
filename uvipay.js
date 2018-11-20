@@ -211,7 +211,7 @@ u.take_payment_back = function(params) {
     return new Promise(function(resolve, reject) {
         if (!u.checkErrors(reject)) return;
 
-        if (amount > 0) {
+       // if (amount > 0) {
             axios.post('https://api.uviba.com/pay/takeback', Object.assign(params, {
                 private_key    : u.sk,
                 isLive         : u.live,
@@ -227,9 +227,11 @@ u.take_payment_back = function(params) {
             }).catch(function() {
                 reject('Sorry some errors happened.');
             });
+        /*
         } else {
             reject('Amount to send is not defined in code. Please define it in function.');
         }
+        */
     });
 };
 
