@@ -218,7 +218,7 @@ u.take_payment_back = function(params) {
             if (response.data.error) {
                 reject((response.data.error_data || []).message || 'Sorry some errors happened.');
             } else {
-                response.data.success_data.link = response.success_data.paylink;
+                response.data.success_data.link = response.data.success_data.paylink;
                 resolve(response.data.success_data);
             }
         }).catch(function() {
