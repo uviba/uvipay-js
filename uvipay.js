@@ -83,12 +83,10 @@ u.refund = function(charge_id, amount) {
  * @returns {Promise}
  */
 u.charge = function(token, amount, params) {
-var subscription=false;
     if (typeof token == "object") {
         amount = token.amount || amount || 0;
         params = token.params || {};
         token = token.token;
-        subscription = token.subscription || false;
     }
     if (typeof amount == "object") {
         params = amount.params || {};
@@ -105,7 +103,6 @@ var subscription=false;
                 UvibaToken     : token,
                 isLive         : u.live,
                 uviba_params   : '',
-                subscription   : subscription,
                 api_version    : u.ver,
                 api_subversion : u.subver
             })).then(function(response) {
@@ -211,27 +208,48 @@ u.take_payment_back = function(params) {
     return new Promise(function(resolve, reject) {
         if (!u.checkErrors(reject)) return;
 
-       // if (amount > 0) {
-            axios.post('https://api.uviba.com/pay/takeback', Object.assign(params, {
-                private_key    : u.sk,
-                isLive         : u.live,
-                api_version    : u.ver,
-                api_subversion : u.subver
-            })).then(function(response) {
-                if (response.data.error) {
-                    reject((response.data.error_data || []).message || 'Sorry some errors happened.');
-                } else {
-                    response.data.success_data.link = response.success_data.paylink;
-                    resolve(response.data.success_data);
-                }
-            }).catch(function() {
-                reject('Sorry some errors happened.');
-            });
-        /*
-        } else {
-            reject('Amount to send is not defined in code. Please define it in function.');
-        }
-        */
+        axios.post('https://api.uviba.com/pay/takeback', Object.assign(params, {
+            private_key    : u.sk,
+            isLive         : u.live,
+            api_version    : u.ver,
+            api_subversion : u.subver,
+            uviba_params   : ''
+        })).then(function(response) {
+            if (response.data.error) {
+                reject((response.data.error_data || []).message || 'Sorry some errors happened.');
+            } else {
+                response.data.success_data.link = response.success_data.paylink;
+                resolve(response.data.success_data);
+            }
+        }).catch(function() {
+            reject('Sorry some errors happened.');
+        });
+    });
+};
+
+/**
+ * @name api_request
+ * @description Send api request to uviba servers
+ * @param {String} url Desination
+ * @param {Object} params Parameters
+ * @returns {Promise}
+ */
+u.api_request = function(url, params) {
+    return new Promise(function(resolve, reject) {
+        if (!u.checkErrors(reject)) return;
+
+        axios.post((url.indexOf('http') == 0 ? url : 'https://api.uviba.com/pay/' + url), Object.assign(params, {
+            private_key    : u.sk,
+            isLive         : u.live,
+            api_version    : u.ver,
+            api_subversion : u.subver,
+            uviba_params   : ''
+        })).then(function(response) {
+            resolve(response.data);
+        }).catch(function() {
+            reject('Sorry some errors happened.');
+        });
+
     });
 };
 
