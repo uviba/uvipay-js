@@ -1,256 +1,212 @@
-const axios  = require('axios');
-const sha256 = require('sha256');
-const qs     = require('qs');
+const querystring = require('querystring');
+const axios = require('axios');
 
-axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded';
-axios.interceptors.request.use((request) => {
-    if (request.data) request.data = qs.stringify(request.data);
-    return request;
+const apiClient = axios.create({
+  baseURL: 'https://api.uviba.com/pay/v1/',
+  timeout: 120 * 1000
 });
 
-var u = { sk: '', live: false, ver: 'v2', subver: '1' };
-
-/**
- * @name setApiPrivateKey
- * @description Set private api key to uvipay client
- * @param {String} key Private api key
- */
-u.setApiPrivateKey = u.setApiKey = function(key) {
-    u.sk = key.trim();
-    u.live = key.indexOf('sk_live_') == 0;
+const apiDefError = {
+  status: false,
+  error: {
+    message: 'Sorry, some error happend',
+    code: 'server_response',
+    type: 'request'
+  }
 };
 
-/**
- * @name checkErrors
- * @description Checks code error
- */
-u.checkErrors = function(reject) {
-    if ((u.sk || '').trim().length < 3) {
-        if (typeof reject == 'function') {
-            reject('Please define private key with uvipay.setApiPrivateKey function.');
-        } else {
-            throw new Error('Please define private key with uvipay.setApiPrivateKey function.');
-        }
-        return false;
-    }
-    return true;
-};
+var UviPay = function (privateKey) {
+  this.setPrivateKey(privateKey);
+}
 
 /**
- * @name refund
- * @description Refund paid payment
- * @param {Object} info Payment info that returned in uvipay.charge
- * @returns {Promise}
- */
-u.refund = function(charge_id, amount) {
-    if (typeof charge_id == "object") {
-        amount = charge_id.amount;
-        charge_id = charge_id.charge_id;
-    }
-
-    return new Promise(function(resolve, reject) {
-        if (!u.checkErrors(reject)) return;
-
-        if (charge_id && amount) {
-            axios.post('https://api.uviba.com/pay/refund', {
-                sign           : sha256(charge_id.trim() + '::' + u.sk),
-                isLive         : u.live,
-                amount         : amount,
-                charge_id      : charge_id,
-                api_version    : u.ver,
-                api_subversion : u.subver
-            }).then(function (response) {
-                if (response.data.error) {
-                    reject((response.data.error_data || []).message || 'Sorry some errors happened.');
-                } else {
-                    resolve(response.data.success_data);
-                }
-            }).catch(function () {
-                reject('Sorry some errors happened.');
-            });
-        } else {
-            reject('Payment Info is not defined or incorrect in code. Please define it in uvipay.charge function.');
-        }
-    });
-};
+* Create uvipay instance
+* @param {String} privateKey Get your key from https://pay.uviba.com/dashboard/#/api
+* ```javascript
+* var uvipay = require('uvipay')('...');
+* ...
+* uvipay.charge({ ... });
+* ```
+*/
+var __uvipay = function (privateKey) { return new UviPay(privateKey); }
 
 /**
- * @name charge
- * @description Charge the user
- * @param {String} token Payment token returned by frontend
- * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
- * @param {Object} params Additional parameters
- * @returns {Promise}
- */
-u.charge = function(token, amount, params) {
-    if (typeof token == "object") {
-        amount = token.amount || amount || 0;
-        params = token.params || {};
-        token = token.token;
-    }
-    if (typeof amount == "object") {
-        params = amount.params || {};
-        amount = amount.amount;
-    }
+* UviPay class
+* ```javascript
+* var UviPay = require('uvipay').UviPay;
+* ...
+* var instance1 = new UviPay('...');
+* instance1.charge({ ... });
+* ```
+*/
+__uvipay.UviPay = UviPay;
 
-    return new Promise(function(resolve, reject) {
-        if (!u.checkErrors(reject)) return;
 
-        if ((token || '').length > 3 && amount > 1) {
-            axios.post('https://api.uviba.com/pay/charge', Object.assign(params, {
-                sign           : sha256(token + '::' + u.sk),
-                amount         : amount,
-                UvibaToken     : token,
-                isLive         : u.live,
-                uviba_params   : '',
-                api_version    : u.ver,
-                api_subversion : u.subver
-            })).then(function(response) {
-                if (response.data.error) {
-                    reject((response.data.error_data || []).message || 'Sorry some errors happened.');
-                } else {
-                    resolve(response.data.success_data);
-                }
-            }).catch(function() {
-                reject('Sorry some errors happened.');
-            });
-        } else {
-            reject('Token and amount is required and must be correct');
-        }        
-    });
-};
+module.exports = __uvipay;
 
 /**
- * @name create_paylink
- * @description Create link that user withdraw his money using this link
- * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
- * @returns {Promise}
- */
-u.create_paylink = function(amount) {
-    return new Promise(function(resolve, reject) {
-        if (!u.checkErrors(reject)) return;
-
-        if (amount > 0) {
-            axios.post('https://api.uviba.com/pay/create_paylink', {
-                private_key    : u.sk,
-                isLive         : u.live,
-                amount         : amount,
-                api_version    : u.ver,
-                api_subversion : u.subver
-            }).then(function(response) {
-                if (response.data.error) {
-                    reject((response.data.error_data || []).message || 'Sorry some errors happened.');
-                } else {
-                    response.data.success_data.link = response.data.success_data.paylink;
-                    resolve(response.data.success_data);
-                }
-            }).catch(function() {
-                reject('Sorry some errors happened.');
-            });
-        } else {
-            reject('Amount to send is not defined in code. Please define it in function.');
-        }
-    });
-};
-
-/**
- * @name send_payment
- * @description Send payment to the user
- * @param {Number} amount Amount in cents (for charging 1$, amount must be 100)
- * @param {Object} params Parameters
- * @returns {Promise}
- */
-u.send_payment = u.send_payments = function(amount, params) {
-    return new Promise(function(resolve, reject) {
-        params.destination = params.destination || 'email';
-        params.takeback = params.takeback || params.take_back || 0;
-        if (params.destination == 'email' && !params.email) {
-            reject('Please define recipient\'s email address.');
-        } else {
-            u.create_paylink(amount).then(function(result) {
-                axios.post('https://api.uviba.com/pay/send_payments', Object.assign(params, {
-                    private_key         : u.sk,
-                    isLive              : u.live,
-                    paylink_code        : result.link_code,
-                    link_methods        : true,
-                    destination         : params.destination,
-                    destination_address : params.email || '',
-                    message_to_receiver : params.message || '',
-                    api_version         : u.ver,
-                    api_subversion      : u.subver,
-                    takeback            : params.takeback,
-                })).then(function(response) {
-                    if (response.data.error && response.data.error_data) {
-                        reject(response.data.error_data.message || 'Sorry some errors happened.');
-                    } else {
-                        if (response.data.send_id) {
-                            resolve({
-                                id: response.data.send_id,
-                                amount: amount
-                            });                            
-                        } else reject('Sorry some errors happened.');
-                    }
-                }).catch(function() {
-                    reject('Sorry some errors happened.');
-                });
-            }).catch(reject);
-        }
-    });
-};
-
-/**
- * @name take_payment_back
- * @description Take payment back
- * @param {Object} params Parameters
- * @returns {Promise}
- */
-u.take_payment_back = function(params) {
-    return new Promise(function(resolve, reject) {
-        if (!u.checkErrors(reject)) return;
-
-        axios.post('https://api.uviba.com/pay/takeback', Object.assign(params, {
-            private_key    : u.sk,
-            isLive         : u.live,
-            api_version    : u.ver,
-            api_subversion : u.subver,
-            uviba_params   : ''
-        })).then(function(response) {
-            if (response.data.error) {
-                reject((response.data.error_data || []).message || 'Sorry some errors happened.');
+* Send request to uviba api server
+* @param {String} path Url path to send request
+* @param {Object} data Request parameters
+* @returns {Promise<Object>} Response
+*/
+UviPay.prototype.request = function (path, data) {
+  return new Promise((resolve, reject) => {
+    apiClient.post(path, querystring.stringify(data || {}), {
+      auth: {
+        username: this.privateKey,
+        password: ''
+      },
+      headers: {
+        'Content-type': 'application/x-www-form-urlencoded'
+      }
+    })
+      .then((response) => {
+        if (typeof response.data == 'string') {
+          try {
+            var json = JSON.parse(response.data);
+            if (typeof json.status != 'undefined') {
+              resolve(json);
             } else {
-                response.data.success_data.link = response.data.success_data.paylink;
-                resolve(response.data.success_data);
+              resolve(apiDefError);
             }
-        }).catch(function() {
-            reject('Sorry some errors happened.');
-        });
-    });
-};
+          } catch (e) {
+            resolve(apiDefError);
+          }
+        } else if (typeof response.data == 'object' && typeof response.data.status != 'undefined') {
+          resolve(response.data);
+        } else {
+          resolve(apiDefError);
+        }
+      })
+      .catch((error_response) => {
+        //console.log(response);
+        response=error_response.response;
+      if (typeof response.data == 'string') {
+          try {
+            var json = JSON.parse(response.data);
+            if (typeof json.status != 'undefined') {
+              resolve(json);
+            } else {
+              resolve(apiDefError);
+            }
+          } catch (e) {
+            resolve(apiDefError);
+          }
+        } else if (typeof response.data == 'object' && typeof response.data.status != 'undefined') {
+          resolve(response.data);
+        } else {
+          resolve(apiDefError);
+        }
+      });
+  });
+}
 
 /**
- * @name api_request
- * @description Send api request to uviba servers
- * @param {String} url Desination
- * @param {Object} params Parameters
- * @returns {Promise}
- */
-u.api_request = function(url, params) {
-    return new Promise(function(resolve, reject) {
-        if (!u.checkErrors(reject)) return;
+* Charge customer's credit card
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.charge = function (data) {
+  return this.request('/charges', data);
+}
 
-        axios.post((url.indexOf('http') == 0 ? url : 'https://api.uviba.com/pay/' + url), Object.assign(params, {
-            private_key    : u.sk,
-            isLive         : u.live,
-            api_version    : u.ver,
-            api_subversion : u.subver,
-            uviba_params   : ''
-        })).then(function(response) {
-            resolve(response.data);
-        }).catch(function() {
-            reject('Sorry some errors happened.');
-        });
+/**
+* Set API Private Key
+* @param {String} privateKey parameters
+*/
+UviPay.prototype.setApiKey = function (privateKey){
+   this.setPrivateKey(privateKey);
+}
 
+/**
+* Set API Private Key
+* @param {String} privateKey parameters
+*/
+UviPay.prototype.setPrivateKey = function (privateKey){
+    if (privateKey.length < 20 && privateKey.indexOf('sk_') !== 0) {
+      throw new Error('Correct private key is required to initialize UviPay client');
+    }
+    this.privateKey = privateKey;
+}
+
+/**
+* Refund pervious charge
+* @param {String} charge_id Charge id token
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.refund = function (charge_id, data) {
+  data = data || {};
+  if (typeof charge_id == 'object') {
+    Object.assign(data, charge_id);
+  } else {
+    data.charge_id = charge_id;
+  }
+  return this.request('/refunds', data);
+}
+
+/**
+* Get your current balance
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.get_balance = function (data) {
+  return this.request('/balance', data);
+}
+
+/**
+* Cancel running subscribtion
+* @param {String} sub_id Subscription id token
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.cancel_subscription = function (sub_id, data) {
+  return this.request(`/subscriptions/${sub_id}?action=delete`, data);
+}
+
+/**
+* Create link and put money in it
+* @param {Number} amount Amount to send
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.create_paylink = function (amount, data) {
+  data = data || {};
+  if (typeof amount == 'object') {
+    Object.assign(data, amount);
+  } else {
+    data.amount = amount;
+  }
+  return this.request('/transfers?action=create_paylink', data);
+}
+
+/**
+* Send payment to specified email & account
+* @param {Number} amount Amount to send
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.send_payment = function (amount, data) {
+  data = data || {};
+  if (typeof amount == 'object') {
+    Object.assign(data, amount);
+  } else {
+    data.amount = amount;
+  }
+  return this.request('/transfers?action=send_payment', data);
+}
+
+/**
+* Reverse sent payment
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.reverse_payment = function (data) {
+  return this.request('/transfers?action=take_payment_back', data);
+}
+
+/**
+* Verify sent webhook request
+* @param {String} req_id Request id that sent to the webserver on webhook request
+* @param {Object} data Request parameters
+*/
+UviPay.prototype.verify_webhook = function (req_id, data) {
+  return this.request(`/webhooks/?action=verify&request_id=${req_id}`,
+    typeof data == 'object' ? data : {
+      verify_for: data
     });
-};
-
-module.exports = u;
+}
